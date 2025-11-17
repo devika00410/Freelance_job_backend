@@ -1,7 +1,7 @@
 const express=require('express')
 const{register,login,adminLogin,adminRegister,getProfile,logout}= require('../Controllers/authController')
 
-const {protect}=require('../Middlewares/authMiddleware')
+const authMiddleware =require('../Middlewares/authMiddleware')
 
 const router= express.Router()
 
@@ -14,7 +14,7 @@ router.post('/admin/login',adminLogin)
 router.post('/admin/register',adminRegister)
 
 // Protected routes
-router.get('/profile',protect,getProfile);
+router.get('/profile',authMiddleware,getProfile);
 router.post('/logout',logout)
 
 module.exports = router

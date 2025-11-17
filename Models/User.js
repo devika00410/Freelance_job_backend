@@ -7,16 +7,16 @@ const userSchema = new mongoose.Schema({
     password:{
         type:String,required:true
     },
-    confirmpassword:{
-        type:String,required:true
-    },
     role:{
         type:String, enum:['client','freelancer','admin'],required:true
     },
     profile:{
         name:{
             type:String,required:true,trim:true
-        }, avatar:{
+        }, 
+        workEmail:{
+            type:String, default:''},
+        avatar:{
             type:String, default:''
         },
         bio:{
@@ -55,7 +55,10 @@ const userSchema = new mongoose.Schema({
     },
     skills:[{
         type:String
-    }], 
+    }],
+    services:[{
+        type:String
+    }] ,
     verification:{
         emailVerified:{
             type:Boolean,default:false
@@ -63,12 +66,21 @@ const userSchema = new mongoose.Schema({
         phoneVerified:{
             type:Boolean, default:false
         },
+      
         status:{
             type:String,
-            enum:['pending','verfied','rejected'],
+            enum:['pending','verified','rejected'],
             default:'pending'
         }
     },
+      emailOTP:{
+            code:{type:String},
+            expiresAt:{type:Date}
+        },
+        phoneOTP:{
+            code:{type:String},
+            expiresAt:{type:Date}
+        },
     settings:{
         notifications:{
             type:Boolean,
@@ -179,7 +191,10 @@ const userSchema = new mongoose.Schema({
         title:String,
         description:String,
         image:String,
-        url:Sring
+        url:String
+    }],
+    badges:[{
+        type:String
     }],
     // Admin specific
     securityLevel:{

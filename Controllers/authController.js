@@ -1,69 +1,71 @@
 const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
-const User= require('../Models/Users')
+const User= require('../Models/User')
 
-// Client/ Freelancer registeration
 
-exports.register= async(req,res)=>{
-    try{
-        const{email,password,name,role='client'} =req.body
+// User Registration (Client/Freelancer Only)
+exports.register = async (req, res) => {
+    try {
+        const { email, password, name, role = 'client', workEmail } = req.body;
 
-        // Validate input
-        if(!email || !password || !name){
-            return res.status(400).json({error:'All fields are required'})
+        // Basic validation
+        if (!email || !password || !name) {
+            return res.status(400).json({ error: 'All fields are required' });
         }
 
         // Only allow client/freelancer roles
-if(!['client','freelancer'].includes(role)){
-    return res.status(400).json({error:"Invalid role selection"})
-}
+        if (!['client', 'freelancer'].includes(role)) {
+            return res.status(400).json({ error: "Invalid role selection" });
+        }
 
-// Email validation
-const emailRegex= /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
-if(!emailRegex.test(email)){
-    return res.status(400).json({error:"Invalid email format"})
-}
+        // Check if user exists
+        const existingUser = await User.findOne({ email });
+        if (existingUser) {
+            return res.status(409).json({ error: 'User already exists' });
+        }
 
-// Password strength
-if(password.length<6){
-    return res.status(400).json({error:'Password must be atleast 6 characters'})
-}
-// Check if user exists
-const existingUser=await User.findOne({email})
-if(existingUser){
-    return res.status(409).json({error:'User already exists'})
-}
+        // Hash password and create user - MOVED THIS BEFORE userData
+        const hashedPassword = await bcrypt.hash(password, 12);
 
-// Hash password and create user
-const hashedPassword= await bacrypt.hash(password, 12)
-const user= new User({
-    email,password:hashedPassword,
-    role,
-    profile:{name}
-})
-await user.save()
+        const userData = {
+            email,
+            password: hashedPassword,
+            role,
+            profile: {
+                name,
+                ...(workEmail && { workEmail })
+            }
+        };
 
-// Generate token (expires in 7 days)
+        const user = new User(userData);
+        await user.save();
 
-const token= jwt.sign(
-    {userId:user._id},
-    process.env.JWT_SECRET,
-    {expiresIn:'7d'}
-);
-res.status(201).json({
-    success:true,
-    user:{
-        id: user._id,email,role,name,profile:user.profile
-    }, token
-})
-    } catch(error){
-        console.log("Registration error:",error);
+        // Generate token
+        const token = jwt.sign(
+            { userId: user._id },
+            process.env.JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+
+        res.status(201).json({
+            success: true,
+            user: {
+                id: user._id,
+                email:user.email,
+                role:user.role,
+                name:user.profile.name
+            },
+            token
+        });
+
+    } catch (error) {
+        console.error("User registration error:", error);
         res.status(500).json({
-            success:false,
-            error:"Regsitration failed.Please try again"
-        })
+            success: false,
+            error: "Registration failed"
+        });
     }
-}
+};
 
 // Regular Login(Client/Freelancer)
 
@@ -142,7 +144,7 @@ exports.adminLogin= async(req,res)=>{
     // Admin token with longer expiry
     const token=jwt.sign(
         {
-            userId:user_id,
+            userId:user._id,
             role:"admin"
         },
         process.env.JWT_SECRET,{expiresIn:'30d'}
@@ -166,73 +168,66 @@ exports.adminLogin= async(req,res)=>{
     }
 }
 
-// Admin Register
-exports.adminRegister=async(req,res)=>{
-    try{
-        const{email,password,name,secretKey}=req.body
-        if(!email || !password || !name || !secretKey){
-            return res.status(400).json({error:"All fields are required"})
+
+
+// Admin Register Only
+exports.adminRegister = async (req, res) => {
+    try {
+        const { email, password, name, secretKey } = req.body;
+
+        if (!email || !password || !name || !secretKey) {
+            return res.status(400).json({ error: "All fields are required" });
         }
 
-        if(secretKey !== process.env.ADMIN_SECRET_KEY){
-            console.warn("Unauthorized admin registration attempt from :",req.ip)
-            return res.status(401).json({error:"Unauthorized admin registration"})
+        // Verify admin secret key
+        if (secretKey !== process.env.ADMIN_SECRET_KEY) {
+            return res.status(401).json({ error: "Unauthorized admin registration" });
         }
-        const existingAdmin= await User.findOne({role:"admin"})
-        if(existingAdmin && process.env.ALLOW_MULTIPLE_ADMINS !== 'true'){
-            return res.status(409).json({error:"Admin already exists"})
+
+        const existingUser = await User.findOne({ email });
+        if (existingUser) {
+            return res.status(409).json({ error: "User already exists" });
         }
-        const existingUser= await User.findOne({email})
-        if(existingUser){
-            return res.status(409).json({error:"User already exists"})
-        }
-        // Stronger password for admin
-        if(password.length<8){
-            return res.status(400).json({error:"Admin password must be atleast 8 characters"})
-        }
-        const hashedPassword=await bcrypt.hash(password,12)
-        const user= new User({
-            email,password:hashedPassword,
-            role:"admin",
-            profle:{
-                name,
-                isVerified:true
+
+        const hashedPassword = await bcrypt.hash(password, 12);
+        const user = new User({
+            email,
+            password: hashedPassword,
+            role: "admin",
+            profile: { name }
+        });
+
+        await user.save();
+
+        const token = jwt.sign(
+            { userId: user._id },
+            process.env.JWT_SECRET,
+            { expiresIn: '30d' }
+        );
+
+        res.status(201).json({
+            success: true,
+            user: {
+                id: user._id,
+                email,
+                role: 'admin',
+                name
             },
-            isActive:true
-        })
-        await user.save()
-        console.log("New admin registered:",email)
+            token
+        });
 
-          const token=jwt.sign({
-        userId:user._id,
-        role:"admin"
-    },
-    process.env.JWT_SECRET,
-    {expiresIn:'30d'}
-)
-res.status(201).json({
-    success:true,
-    user:{
-        id:user._id,
-        email,role:'admin',
-        name,
-        profile:user.profile
-    },token
-})
-    } catch(error){
-        console.error("Admin registration error:", error)
+    } catch (error) {
+        console.error("Admin registration error:", error);
         res.status(500).json({
-            success:false,
-            error:"Admin registered failed"
-        })
+            success: false,
+            error: "Admin registration failed"
+        });
     }
-  
-}
-
+};
 // Get current user
 exports.getProfile= async(req,res)=>{
     try{
-        const user=await User.findById(req.user.Id).select('-password')
+        const user=await User.findById(req.userId).select('-password')
         if(!user){
             return res.status(404).json({error:"User not found"})
         }
@@ -260,6 +255,6 @@ exports.getProfile= async(req,res)=>{
 exports.logout =(req,res)=>{
     res.json({
         success:true,
-        message:"Logges out successfully"
+        message:"Log out successfully"
     })
 }

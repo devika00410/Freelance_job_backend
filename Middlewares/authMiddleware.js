@@ -1,7 +1,9 @@
 const jwt = require('jsonwebtoken')
-const User= require('../Models/Users')
+const User= require('../Models/User')
 
-exports.protect= async (req,res)=>{
+
+const authMiddleware = async(req,res,next)=>{
+
     try{
     let token;
     if(req.headers.authorization && req.headers.authorization.startsWith('Bearer')){
@@ -16,9 +18,9 @@ exports.protect= async (req,res)=>{
   if(!user){
     return res.status(401).json({error:"User not found"})
   }
-  if(!user.isActive){
-    return res.status(401).json({error:"Not authorized,token failed"})
-  }
+//   if(!user.isActive){
+//     return res.status(401).json({error:"Not authorized,token failed"})
+//   }
   req.userId=user._id;
   req.userRole = user.role
   next()
@@ -28,7 +30,7 @@ exports.protect= async (req,res)=>{
 }
 }
 
-exports.requiredAdmin = async(req,res,next)=>{
+authMiddleware.requiredAdmin = async(req,res,next)=>{
     try{
         if(req.userRole !== 'admin'){
             return res.status(403).json({error:"Admin access required"})
@@ -39,3 +41,5 @@ exports.requiredAdmin = async(req,res,next)=>{
         res.status(403).json({error:"Admin authorized failed"})
     }
 }
+
+module.exports=authMiddleware;
