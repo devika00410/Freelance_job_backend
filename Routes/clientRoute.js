@@ -1,12 +1,13 @@
 const express = require('express')
 const router = express.Router()
 const clientController = require('../Controllers/clientController')
-const authMiddleware=require('../Middlewares/authMiddleware');
+const {authenticate}=require('../Middlewares/authMiddleware');
 const roleAuth = require('../Middlewares/roleAuth');
 
-// apply authentication to all client roles
-router.use(authMiddleware);
-// Add this debug route
+
+router.use(authenticate);
+
+
 router.get('/debug-user', (req, res) => {
  console.log('User ID from token:', req.userId);
  console.log('User Role from token:', req.userRole);
@@ -18,7 +19,7 @@ userRole: req.userRole,
  });
 });
 
-// Add this simple test route
+
 router.get('/test-simple', (req, res) => {
 console.log('✅ Test route hit successfully');
 res.json({ message: 'Test route working', timestamp: new Date() });
@@ -55,4 +56,3 @@ router.get('/jobs/:jobId/proposals',roleAuth('view_proposals'),clientController.
 
 
 module.exports=router;
-

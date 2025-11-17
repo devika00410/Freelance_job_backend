@@ -29,6 +29,21 @@ const authMiddleware = async(req,res,next)=>{
     res.status(401).json({error:"Account deactivated"})
 }
 }
+// Add this function to your existing auth middleware
+const authorize = (...roles) => {
+    return (req, res, next) => {
+        if (!roles.includes(req.userRole)) {
+            return res.status(403).json({
+                success: false,
+                message: `User role ${req.userRole} is not authorized to access this route`
+            });
+        }
+        next();
+    };
+};
+
+
+
 
 authMiddleware.requiredAdmin = async(req,res,next)=>{
     try{
@@ -41,5 +56,8 @@ authMiddleware.requiredAdmin = async(req,res,next)=>{
         res.status(403).json({error:"Admin authorized failed"})
     }
 }
+module.exports = {
+    authenticate:authMiddleware,
+    authorize 
+};
 
-module.exports=authMiddleware;

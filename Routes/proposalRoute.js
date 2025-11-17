@@ -5,7 +5,7 @@ const authMiddleware = require('../Middlewares/authMiddleware')
 const roleAuth=require('../Middlewares/roleAuth')
 
 // apply authentication to all proposal routes
-router.use(authMiddleware);
+// router.use(authMiddleware);
 
 // proposal management routes
 router.post('/proposals',roleAuth('submit_proposals'),proposalController.submitProposal)

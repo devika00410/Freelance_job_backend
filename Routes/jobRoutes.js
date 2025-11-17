@@ -11,7 +11,7 @@ router.get('/jobs',jobController.getAllJobs)
 router.get('/:jobId',jobController.getJobById)
 
 // protected routes(auth required)
-router.use(authMiddleware)
+// router.use(authMiddleware)
 
 // job creation and management
 

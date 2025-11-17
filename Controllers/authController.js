@@ -174,14 +174,19 @@ exports.adminLogin= async(req,res)=>{
 exports.adminRegister = async (req, res) => {
     try {
         const { email, password, name, secretKey } = req.body;
-
-        if (!email || !password || !name || !secretKey) {
-            return res.status(400).json({ error: "All fields are required" });
-        }
-
+        
         // Verify admin secret key
         if (secretKey !== process.env.ADMIN_SECRET_KEY) {
-            return res.status(401).json({ error: "Unauthorized admin registration" });
+            console.log("❌ SECRET KEY MISMATCH DETECTED!");
+            return res.status(401).json({ 
+                error: "Unauthorized admin registration",
+                debug: {
+                    received: secretKey,
+                    expected: process.env.ADMIN_SECRET_KEY,
+                    receivedLength: secretKey?.length,
+                    expectedLength: process.env.ADMIN_SECRET_KEY?.length
+                }
+            });
         }
 
         const existingUser = await User.findOne({ email });
@@ -216,6 +221,8 @@ exports.adminRegister = async (req, res) => {
             token
         });
 
+        console.log("✅ Secret key matched! Proceeding with admin registration...");
+        
     } catch (error) {
         console.error("Admin registration error:", error);
         res.status(500).json({
@@ -224,6 +231,8 @@ exports.adminRegister = async (req, res) => {
         });
     }
 };
+
+       
 // Get current user
 exports.getProfile= async(req,res)=>{
     try{
@@ -258,3 +267,47 @@ exports.logout =(req,res)=>{
         message:"Log out successfully"
     })
 }
+
+
+
+exports.getAdminProfile = async (req, res) => {
+    try {
+        const admin = await User.findById(req.userId).select('-password');
+        
+        if (!admin) {
+            return res.status(404).json({
+                success: false,
+                message: 'Admin not found'
+            });
+        }
+
+        if (admin.role !== 'admin') {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied. Admin privileges required.'
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: {
+                id: admin._id,
+                name: admin.name,
+                email: admin.email,
+                role: admin.role,
+                profile: admin.profile,
+                createdAt: admin.createdAt,
+                updatedAt: admin.updatedAt
+            }
+        });
+
+    } catch (error) {
+        console.error('Get admin profile error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error',
+            error: error.message
+        });
+    }
+};
+

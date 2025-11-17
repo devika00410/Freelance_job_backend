@@ -1,23 +1,5 @@
 const mongoose = require('mongoose')
 
-const milestonesSchema = new mongoose.Schema({
-    title: {
-        type: String,
-        required: true
-    },
-    description: String,
-    amount: {
-        type: Number,
-        required: true
-    },
-    status: {
-        type: String,
-        enum: ['pending', 'in_progress', 'completed', 'paid'],
-        default: 'pending'
-    },
-    dueDate: Date,
-    completedAt: Date
-});
 
 const jobSchema = new mongoose.Schema({
     _id: {
@@ -88,7 +70,10 @@ const jobSchema = new mongoose.Schema({
         type:String,
         ref:'User'
     },
-    mileStones:[milestonesSchema],
+    projectId:{
+        type:mongoose.Schema.Types.ObjectId,
+        ref:'Project'
+    },
     preferences:{
         location:{
             type:String,
@@ -131,7 +116,8 @@ jobSchema.index({createdAt:-1})
 
 // to check if job is still active
 jobSchema.methods.isActive=function(){
-    return this.status === 'active' && this.hiringStatus === 'accepting_proposals';
+    return this.status === 'active' && this.hiringStatus === 'accepting_proposals'
+     && this.deadline >new Date();
 }
 
 // static method to get jobs by client
@@ -147,6 +133,50 @@ status:'active',
 hiringStatus:'accepting_proposals',
 deadline:{$gt:new Date()}
     })
+}
+
+jobSchema.methods.hiredFreelancerAndCreateProject = async function(freelancerId){
+    const Project = mongoose.model('Project');
+
+    // create project for execution phase
+    const project = new Project({
+        jobId:this._id,
+        clientId:this.clientId,
+        freelancerId:this.freelancerId,
+        title:this.title,
+        description:this.description,
+        budget:this.budget,
+        currency:this.currency,
+        category:this.category,
+        serviceCategory:this.serviceCategory,
+        skillsRequired:this.skillsRequired,
+        timeline:{
+            startDate: new Date(),
+            deadline:this.deadline
+        }
+    });
+    await project.save()
+
+    // update job
+
+    this.hiredFreelancer = freelancerId;
+    this.hiringStatus = 'closed';
+    this.projectId = project._id;
+
+    await this.save()
+    return project;
+}
+
+jobSchema.methods.hasHiredFreelancer = function(){
+    return !!this.hiredFreelancer
+}
+
+jobSchema.methods.getHiredFreelancerInfo = function() {
+    return {
+        freelancerId: this.hiredFreelancer,
+        isHired: !!this.hiredFreelancer,
+        projectId: this.projectId
+    };
 }
 
 const Job = mongoose.model('Job',jobSchema);

@@ -9,7 +9,9 @@ app.use(express.json());
 
 app.use(express.json())
 
-// Add this SUPER SIMPLE test route
+
+
+
 app.get('/api/test', (req, res) => {
     console.log('✅ Basic test route hit!')
     res.json({ message: 'Basic test working', time: new Date() })
@@ -17,9 +19,10 @@ app.get('/api/test', (req, res) => {
 
 const cors = require('cors');
 app.use(cors({
-  origin: 'http://localhost:5173', // Your Vite frontend URL
+  origin: 'http://localhost:5173', 
   credentials: true
 }));
+
 // Routes
 const authRoute = require('./Routes/authRoute');
 app.use('/api/auth', authRoute);
@@ -70,10 +73,7 @@ app.use((error, req, res, next) => {
     });
 });
 
-// Add global error handler - place this before your routes
 
-
-// Add this route after your other routes in index.js
 app.get('/test-models', async (req, res) => {
     try {
         const User = require('./Models/User');
