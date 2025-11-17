@@ -1,4 +1,6 @@
 const mongoose = require('mongoose');
+import { FaClipboardList } from 'react-icons/fa';
+
 
 const popularPackageSchema = new mongoose.Schema({
     name: {
@@ -47,7 +49,7 @@ const serviceSchema = new mongoose.Schema({
     }],
     icon: {
         type: String,
-        default: '📋'
+        default: FaClipboardList
     },
     tags: [{
         type: String,

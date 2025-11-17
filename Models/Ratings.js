@@ -86,7 +86,7 @@ const ratingSchema = new mongoose.Schema({
         trim: true
     },
 
-    // Would work with again
+ 
     wouldWorkAgain: {
         type: Boolean,
         default: true
