@@ -8,8 +8,8 @@ const router= express.Router()
 // Public routes
 router.post('/register',register)
 router.post('/login',login)
-router.get('/client/profile', authenticate, getProfile);
-router.get('/freelancer/profile', authenticate, getProfile);
+// router.get('/client/profile', authenticate, getProfile);
+// router.get('/freelancer/profile', authenticate, getProfile);
 
 // Admin only routes(separate)
 router.post('/admin/login',adminLogin)

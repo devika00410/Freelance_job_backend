@@ -271,8 +271,24 @@ const portfolioSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
-  }
-});
+  },
+  documents:[{
+    name:String,
+    fileType:String,
+    fileUrl:String,
+    fileSize:String,
+    description:String,
+    uploadedAt:{type:Date,default:Date.now}
+  }],
+  gallery:[{
+    name:String,
+    imageUrl:String,
+    description:String,
+    uploadedAt:{type:Date,default:Date.now}
+  }],
+  profileImage:String,
+  coverImage:String
+},{timestamps:true});
 
 portfolioSchema.pre('save', function(next) {
   this.lastUpdated = new Date();

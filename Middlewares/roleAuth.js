@@ -1,6 +1,6 @@
 const roleAuth = (role) => {
     console.log(`🔐 RoleAuth checking: ${role}`);
-    
+
     const rolePermissions = {
         // client features
         'client_dashboard': ['client'],
@@ -8,12 +8,23 @@ const roleAuth = (role) => {
         'manage_jobs': ['client'],
         'view_proposals': ['client'],
         'accept_proposals': ['client'],
+        'manage_contracts': ['client', 'freelancer'],
+        'view_contracts': ['client', 'freelancer'],
+        'make_payments': ['client'],
+        'manage_workspaces': ['client'],
 
         // freelancer features
         'freelancer_dashboard': ['freelancer'],
         'browse_jobs': ['freelancer'],
         'submit_proposals': ['freelancer'],
         'manage_proposals': ['freelancer'],
+        'sign_contracts': ['freelancer'],
+        'request_contract_changes': ['freelancer'],
+        'decline_contracts': ['freelancer'],
+
+        'view_workspaces': ['client', 'freelancer'],
+        'manage_workspaces': ['client', 'freelancer'],
+        'access_workspace': ['client', 'freelancer'],
 
         // common features
         'send_messages': ['client', 'freelancer'],
@@ -29,7 +40,7 @@ const roleAuth = (role) => {
     return (req, res, next) => {
         try {
             console.log('🔐 RoleAuth - User ID:', req.userId, 'Role:', req.userRole);
-            
+
             // Check authentication
             if (!req.userId || !req.userRole) {
                 console.log('❌ Authentication failed');

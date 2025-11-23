@@ -2,10 +2,7 @@ const mongoose = require('mongoose')
 
 
 const jobSchema = new mongoose.Schema({
-    _id: {
-        type: String,
-        required: true
-    },
+   
     title: {
         type: String,
         required: true,
@@ -20,11 +17,12 @@ const jobSchema = new mongoose.Schema({
         required:true
     }, currency:{
         type:String,
-        default:'USD'
+        default:'INR'
     },
     serviceCategory:{
         type:String,
-        required:true
+        required:true,
+        default:"Web Development"
     },category:{
         type:String,
         required:true
@@ -34,7 +32,7 @@ const jobSchema = new mongoose.Schema({
         trim:true
     }],
     clientId:{
-        type:String,
+        type:mongoose.Schema.Types.ObjectId,
         ref:'User',
         required:true
     },
@@ -51,16 +49,19 @@ const jobSchema = new mongoose.Schema({
     experienceLevel:{
         type:String,
         enum:['entry','intermediate','expert'],
-        required:true
+        required:true,
+        default:'intermediate'
     },
     duration:{
         type:String,
-        required:true
+        required:true,
+        default:'1-3 months'
     },
     projectType:{
         type:String,
         enum:['one_time','ongoing','hourly'],
-        required:true
+        required:true,
+        default:'one_time'
     },
     proposals:[{
         type:String,
@@ -103,7 +104,8 @@ const jobSchema = new mongoose.Schema({
         default:0
     },deadline:{
         type:Date,
-        required:true
+        required:true,
+        default:()=>new Date(Date.now()+30*24*60*1000)
     }
 },{
     timestamps:true
@@ -142,7 +144,7 @@ jobSchema.methods.hiredFreelancerAndCreateProject = async function(freelancerId)
     const project = new Project({
         jobId:this._id,
         clientId:this.clientId,
-        freelancerId:this.freelancerId,
+        freelancerId:freelancerId,
         title:this.title,
         description:this.description,
         budget:this.budget,

@@ -1,7 +1,7 @@
 const User = require('../Models/User')
 const Job = require('../Models/Job')
 const Proposal = require('../Models/Proposal')
-const Chat = require('../Models/Chat')
+const Message = require('../Models/Message')
 
 const clientController = {
     getClientDashboard: async (req, res) => {
@@ -17,14 +17,19 @@ const clientController = {
             });
 
             const activeChats = 0
+
             // calculate total spent
+
             const completedJobs = await Job.find({
                 clientId,
                 status: 'completed',
                 hiredFreelancer: { $exists: true }
+            }).lean();
 
-            });
-            const totalSpent = completedJobs.reduce((sum, job) => sum + job.budget, 0)
+            const totalSpent = (completedJobs || []).reduce((sum, job) => {
+                return sum + (job.budget || 0);
+            }, 0);
+
 
             // get recent jobs
             const recentJobs = await Job.find({ clientId })
@@ -227,7 +232,7 @@ const clientController = {
 
             await Proposal.updateMany(
                 {
-                    projectId: Proposal.projectId,
+                    projectId: proposal.projectId,
                     _id: { $ne: proposalId },
                     status: 'submitted'
                 },
@@ -261,43 +266,7 @@ const clientController = {
             res.status(500).json({ message: 'Server error rejecting proposal' })
         }
     },
- getClientDashboard: async (req, res) => {
-    try {
-        console.log('1. Starting dashboard function');
-        const clientId = req.userId;
-        console.log('2. Client ID:', clientId);
 
-        // Test basic database connection first
-        console.log('3. Testing User model...');
-        const userExists = await User.findById(clientId);
-        console.log('4. User found:', !!userExists);
-
-        console.log('5. Testing Job model...');
-        const totalJobs = await Job.countDocuments({ clientId });
-        console.log('6. Total jobs:', totalJobs);
-
-        console.log('7. Testing Proposal model...');
-        const totalProposals = await Proposal.countDocuments({ clientId });
-        console.log('8. Total proposals:', totalProposals);
-
-        // If we get here, return simple response
-        res.json({
-            success: true,
-            message: 'Dashboard working',
-            stats: {
-                totalJobs,
-                totalProposals
-            }
-        });
-
-    } catch (error) {
-        console.error('🚨 Dashboard ERROR:', error);
-        res.status(500).json({ 
-            message: 'Dashboard error',
-            error: error.message 
-        });
-    }
-},
     // Get client analytics
 
     getClientAnalytics: async (req, res) => {
@@ -335,7 +304,9 @@ const clientController = {
                 jobStats, proposalStats, monthlyJobs
             })
         } catch (error) {
-            res.status(500).json({ message: 'Server error fetching analytics' })
+            res.status(500).json({ success:false,
+                message: 'Server error fetching analytics' ,
+            error:process.env.NODE_ENV === 'development' ? error.message :undefined})
         }
     },
 
@@ -362,31 +333,85 @@ const clientController = {
             res.status(500).json({ message: 'Server error verifying mobile' })
         }
     },
-   
-    createJob: async (req, res) => {
-        res.status(501).json({ message: 'Not implemented yet' });
-    },
-    
+
+   createJob: async (req, res) => {
+    try {
+        console.log('🎯 CREATEJOB STARTED!')
+        console.log('Request body:', req.body)
+        console.log('User ID:', req.userId)
+        
+        // Check if Job model is loaded
+        console.log('Job model available:', !!Job)
+        if (!Job) {
+            throw new Error('Job model is not loaded!')
+        }
+        
+        // Extract data
+        const { title, description, budget, category } = req.body
+        console.log('Extracted data:', { title, description, budget, category })
+        
+        // Create SIMPLE job data with ONLY required fields
+        const jobData = {
+            title: title,
+            description: description,
+            budget: Number(budget),
+            category: category,
+            clientId: req.userId,
+            status: 'active'
+            // REMOVE all other fields temporarily
+        }
+        
+        console.log('Job data:', jobData)
+        console.log('About to create Job instance...')
+        
+        const job = new Job(jobData)
+        console.log('Job instance created')
+        
+        console.log('About to save job...')
+        const savedJob = await job.save()
+        console.log('✅ JOB SAVED SUCCESSFULLY:', savedJob._id)
+        
+        res.json({
+            success: true,
+            message: 'Job created successfully!',
+            data: savedJob
+        })
+        
+    } catch (error) {
+        console.error('💥 CREATEJOB REAL ERROR:', error.message)
+        console.error('💥 ERROR NAME:', error.name)
+        console.error('💥 FULL ERROR:', error)
+        
+        // TEMPORARILY return the actual error
+        res.status(500).json({
+            success: false,
+            message: 'Server error creating job',
+            realError: error.message,  // This will show the actual error
+            errorName: error.name,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        })
+    }
+},
     getClientJobStats: async (req, res) => {
         res.status(501).json({ message: 'Not implemented yet' });
     },
-    
+
     updateJob: async (req, res) => {
         res.status(501).json({ message: 'Not implemented yet' });
     },
-    
+
     deleteJob: async (req, res) => {
         res.status(501).json({ message: 'Not implemented yet' });
     },
-    
+
     updateJobStatus: async (req, res) => {
         res.status(501).json({ message: 'Not implemented yet' });
     },
-    
+
     closeJob: async (req, res) => {
         res.status(501).json({ message: 'Not implemented yet' });
     },
-    
+
     getJobProposals: async (req, res) => {
         res.status(501).json({ message: 'Not implemented yet' });
     }

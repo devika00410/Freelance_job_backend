@@ -206,52 +206,7 @@ const jobController={
             res.status(500).json({message:'Server error deleting job'})
         }
     },
-createJob: async (req, res) => {
-    try {
-        console.log('1. Starting createJob function');
-        const clientId = req.userId;
-        const jobData = req.body;
-        
-        console.log('2. Client ID:', clientId);
-        console.log('3. Job data:', jobData);
 
-        // add clientId to job data
-        jobData.clientId = clientId;
-
-        // generate custom Id if not provided
-        if (!jobData._id) {
-            jobData._id = `job_${Date.now()}`;
-        }
-
-        jobData.status = jobData.status || 'draft';
-        jobData.hiringStatus = jobData.hiringStatus || 'accepting_proposals';
-        jobData.proposalCount = 0;
-        jobData.viewCount = 0;
-
-        console.log('4. Final job data:', jobData);
-
-        const newJob = new Job(jobData);
-        console.log('5. Job model created');
-        
-        await newJob.save();
-        console.log('6. Job saved to database');
-
-        await newJob.populate('clientId', 'name companyName');
-        console.log('7. Job populated with client data');
-
-        res.status(201).json({
-            message: 'Job created successfully',
-            job: newJob
-        });
-        
-    } catch (error) {
-        console.error('❌ Create job error:', error);
-        res.status(500).json({ 
-            message: 'Server error creating job',
-            error: error.message 
-        });
-    }
-},
     // Get job proposals
 
     getJobProposals: async (req,res)=>{

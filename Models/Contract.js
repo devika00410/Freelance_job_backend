@@ -74,7 +74,7 @@ const contractSchema = new mongoose.Schema({
         required:true,
         trim:true
     },
-    milestonStructure:{
+    milestoneStructure:{
         type:String,
         required:true,
         trim:true
@@ -82,7 +82,7 @@ const contractSchema = new mongoose.Schema({
     phases:[phaseSchema],
     status:{
         type:String,
-        enum:['draft','pending','signed','active','completed','cancelled','disputed'],
+        enum:['draft','sent','pending','signed','active','completed','cancelled','disputed'],
         default:'draft'
     },
     clientSigned:{

@@ -1,14 +1,15 @@
 const express=require('express')
 const router=express.Router()
 const proposalController=require('../Controllers/proposalController')
-const authMiddleware = require('../Middlewares/authMiddleware')
+const {authenticate} = require('../Middlewares/authMiddleware')
+const {proposalValidations} = require('../Middlewares/validationMiddleware')
 const roleAuth=require('../Middlewares/roleAuth')
 
 
-// router.use(authMiddleware);
+router.use(authenticate);
 
 // proposal management routes
-router.post('/proposals',roleAuth('submit_proposals'),proposalController.submitProposal)
+router.post('/',roleAuth('submit_proposals'), proposalValidations.submitProposal,proposalController.submitProposal)
 router.get('/',roleAuth('manage_proposals'),proposalController.getFreelancerProposals)
 router.get('/stats',roleAuth('view_proposals'),proposalController.getProposalStats)
 

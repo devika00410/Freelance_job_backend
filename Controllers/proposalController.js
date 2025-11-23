@@ -83,7 +83,7 @@ const proposalController = {
         });
         
     } catch (error) {
-        console.error("❌ Submit proposal error:", error);
+        console.error("Submit proposal error:", error);
         res.status(500).json({ 
             message: "Server error submitting proposal",
             error: error.message 
@@ -94,7 +94,7 @@ const proposalController = {
 
     getFreelancerProposals: async (req, res) => {
         try {
-            const freelancerId = req.user.id;
+            const freelancerId = req.userId;
             const { status, page = 1, limit = 10 } = req.query;
 
             let query = { freelancerId };
@@ -129,7 +129,7 @@ const proposalController = {
     getProposalDetails: async (req, res) => {
         try {
             const { proposalId } = req.params;
-            const userId = req.user.id;
+            const userId = req.userId;
 
             const proposal = await Proposal.findOne({ _id: proposalId })
                 .populate('projectId', 'title description budget skillsRequired duration experienceLevel')
@@ -153,7 +153,7 @@ const proposalController = {
     // Update proposal(freelancer)
     updateProposal: async (req, res) => {
         try {
-            const freelancerId = req.user.id;
+            const freelancerId = req.userId;
             const { proposalId } = req.params;
             const updateData = req.body;
             const proposal = await Proposal.findOne({
@@ -198,7 +198,7 @@ const proposalController = {
     // withdraw proposal(freelancer)
     withdrawProposal: async (req, res) => {
         try {
-            const freelancerId = req.user.id;
+            const freelancerId = req.userId;
             const { proposalId } = req.params;
 
             const proposal = await Proposal.findOne({
@@ -232,7 +232,7 @@ const proposalController = {
     // Client:Accept proposal (Also in clientController, but included here for completeness)
     acceptProposal: async (req, res) => {
         try {
-            const clientId = req.user.id;
+            const clientId = req.userId;
             const { proposalId } = req.params;
 
             const proposal = await Proposal.findOne({
@@ -314,8 +314,8 @@ const proposalController = {
 
     getProposalStats: async (req, res) => {
         try {
-            const userId = req.user.id;
-            const userRole = req.user.role;
+            const userId = req.userId;
+            const userRole = req.userRole;
 
             let matchQuery = {};
             if (userRole === 'freelancer') {

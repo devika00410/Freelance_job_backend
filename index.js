@@ -4,18 +4,8 @@ require('dotenv').config();
 const connectDB = require('./Config/db');
 const app = express();
 
-
 app.use(express.json());
-
-app.use(express.json())
-
-
-
-
-app.get('/api/test', (req, res) => {
-    console.log('✅ Basic test route hit!')
-    res.json({ message: 'Basic test working', time: new Date() })
-})
+app.use(express.urlencoded({ extended: true }));
 
 const cors = require('cors');
 app.use(cors({
@@ -23,22 +13,56 @@ app.use(cors({
   credentials: true
 }));
 
-// Routes
-const authRoute = require('./Routes/authRoute');
-app.use('/api/auth', authRoute);
+connectDB().then(() => {
+    console.log('Database connected successfully');
+}).catch(err => {
+    console.error('Database connection failed:', err);
+    process.exit(1);
+});
 
-const clientRoute = require('./Routes/clientRoute')
-app.use('/api/client', clientRoute);
+const { globalErrorHandler } = require('./Middlewares/validationMiddleware');
+
+app.use('/api/auth', require('./Routes/authRoute')); 
+app.use('/api/jobs', require('./Routes/jobRoutes')); 
+app.use('/api/client', require('./Routes/clientRoute'));
+app.use('/api/match', require('./Routes/matchRoute'));
+
+app.use('/api/workspace', require('./Routes/workspaceRoutes'));
+app.use('/api/chat', require('./Routes/chatRoutes'));
+app.use('/api/milestones', require('./Routes/milestoneRoutes'));
+app.use('/api/video-calls', require('./Routes/videoCallRoutes'));
+app.use('/api/notifications', require('./Routes/notificationRoutes'));
+app.use('/api/files', require('./Routes/fileRoutes'));
+app.use('/api/reports', require('./Routes/reportRoutes'));
+
+app.use('/api/freelancer', require('./Routes/freelancerRoutes'));
+app.use('/api/proposals', require('./Routes/proposalRoute'));
 
 
-const jobRoutes=require('./Routes/jobRoutes')
-const proposalRoute = require('./Routes/proposalRoute')
+// Change these lines:
+const clientAnalyticsRoutes = require('./Routes/clientAnalyticsFixed');        
+const freelancerAnalyticsRoutes = require('./Routes/freelancerAnalyticsFixed'); 
 
-app.use('/api/jobs', jobRoutes)
-app.use('/api/proposals', proposalRoute)
+app.use('/api/client/analytics', clientAnalyticsRoutes);
+app.use('/api/freelancer/analytics', freelancerAnalyticsRoutes);
 
 
-// Basic route
+const previousFreelancersRoutes = require('./Routes/previousFreelancersRoutes');
+
+app.use('/api/previous-freelancers', previousFreelancersRoutes);
+
+
+// Admin routes
+const adminRoutes = require('./routes/adminRoutes');
+app.use('/api/admin', adminRoutes);
+
+app.get('/api/test', (req, res) => {
+    res.json({ 
+        message: 'Basic test working', 
+        time: new Date()
+    });
+});
+
 app.get('/', (req, res) => {
     res.json({
         success: true,
@@ -47,65 +71,30 @@ app.get('/', (req, res) => {
     });
 });
 
-// Health check endpoint
 app.get('/health', (req, res) => {
     res.status(200).json({
         success: true,
         message: "Server is healthy",
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        database: "Connected", 
+        environment: process.env.NODE_ENV || 'development'
     });
 });
 
-// Handle undefined routes
-app.use((req, res) => {
+app.use('*all', (req, res) => {
     res.status(404).json({
         success: false,
         message: `Route ${req.originalUrl} not found`
     });
 });
 
-app.use((error, req, res, next) => {
-    console.error('🚨 Global Error Handler:', error);
-    res.status(500).json({ 
-        message: 'Internal server error',
-        error: error.message,
-        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
-});
-
-
-app.get('/test-models', async (req, res) => {
-    try {
-        const User = require('./Models/User');
-        const Job = require('./Models/Job'); 
-        const Proposal = require('./Models/Proposal');
-        
-        res.json({ 
-            success: true, 
-            message: 'All models loaded successfully',
-            models: ['User', 'Job', 'Proposal']
-        });
-    } catch (error) {
-        console.error('Model loading error:', error);
-        res.status(500).json({ 
-            success: false, 
-            error: error.message,
-            message: 'Model loading failed'
-        });
-    }
-});
+app.use(globalErrorHandler);
 
 const PORT = process.env.PORT || 5000;
 
-// Connect to database and start server
-connectDB().then(() => {
-    app.listen(PORT, () => {
-        console.log(`🚀 Server running on port ${PORT}`);
-        console.log(`🗄️ Database: Freelumo_platform`);
-        console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-        console.log(`❤️ Health check: http://localhost:${PORT}/health`);
-    });
-}).catch(err => {
-    console.error('❌ Failed to connect to database:', err);
-    process.exit(1);
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+    console.log(`Database: Freelumo_platform`);
+    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`Health check: http://localhost:${PORT}/health`);
 });
