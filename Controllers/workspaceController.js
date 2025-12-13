@@ -4,7 +4,7 @@ const File = require('../Models/File');
 const Milestone = require('../Models/Milestone');
 const Report = require('../Models/Report');
 const VideoCall = require('../Models/VideoCall');
-const dailyService = require('../services/dailyService');
+const dailyService = require('../Services/dailyService');
 const Contract = require('../Models/Contract');
 const axios = require('axios');
 

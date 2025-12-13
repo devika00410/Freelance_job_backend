@@ -1,4 +1,4 @@
-const dailyService = require('../services/dailyService');
+const dailyService = require('../Services/dailyService');
 const Workspace = require('../Models/Workspace');
 const VideoCall = require('../Models/VideoCall');
 
