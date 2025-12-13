@@ -11,6 +11,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // ---------- CORS ----------
+
 app.use(cors({
     origin: [
         'https://freelance-job-frontend.onrender.com',
@@ -23,6 +24,8 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
+
+
 
 // ---------- Connect to MongoDB ----------
 connectDB().then(() => {
@@ -57,25 +60,28 @@ app.use(globalErrorHandler);
 
 // ---------- Render-safe Server + Socket.IO ----------
 const startServer = () => {
-    const PORT = process.env.PORT || 3000;
+    const PORT = process.env.PORT || 3000; // <- Render will provide this automatically
 
+    // 1. Create HTTP server
     const server = http.createServer(app);
 
+    // 2. Initialize Socket.IO
     const io = socketIo(server, {
-        cors: {
-            origin: [
-                'https://freelance-job-frontend.onrender.com',
-                'http://localhost:5173', 
-                'http://localhost:5174',
-                'http://localhost:3000',
-                'http://localhost:10000'
-            ],
-            methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-            credentials: true,
-            allowedHeaders: ['Content-Type', 'Authorization']
-        }
-    });
+    cors: {
+        origin: [
+            'https://freelance-job-frontend.onrender.com',
+            'http://localhost:5173', 
+            'http://localhost:5174',
+            'http://localhost:3000',
+            'http://localhost:10000'
+        ],
+        methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        credentials: true,
+        allowedHeaders: ['Content-Type', 'Authorization']
+    }
+});
 
+    // 3. Socket.IO connection events
     io.on('connection', (socket) => {
         console.log('✅ New client connected:', socket.id);
 
@@ -104,8 +110,10 @@ const startServer = () => {
         });
     });
 
+    // 4. Make Socket.IO available in routes
     app.set('io', io);
 
+    // 5. Start server
     server.listen(PORT, () => {
         console.log(`\n🎉 SERVER STARTED 🎉`);
         console.log(`✅ Server running on port ${PORT}`);
@@ -114,6 +122,7 @@ const startServer = () => {
         console.log(`🔌 Socket.IO ready on same port`);
         console.log(`========================================\n`);
 
+        // Save port to file (optional)
         fs.writeFileSync('.current-port', PORT.toString());
     });
 };
