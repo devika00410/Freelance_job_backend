@@ -390,6 +390,54 @@ const freelancerEarningsController = {
             });
         }
     },
+    // Add to freelancerEarningsController.js
+getAnalyticsEarnings: async (req, res) => {
+    try {
+        const freelancerId = req.user.id || req.userId;
+        
+        // You can use the existing getEarningsOverview or create a new method
+        const earningsData = await calculateMonthlyEarnings(freelancerId); // Use your existing function
+        
+        // Or create analytics-specific logic
+        const monthlyEarnings = await Transaction.aggregate([
+            {
+                $match: {
+                    toUser: freelancerId,
+                    type: 'payment',
+                    status: 'completed'
+                }
+            },
+            {
+                $group: {
+                    _id: {
+                        year: { $year: "$createdAt" },
+                        month: { $month: "$createdAt" }
+                    },
+                    totalEarnings: { $sum: "$amount" },
+                    transactionCount: { $sum: 1 }
+                }
+            },
+            { $sort: { "_id.year": 1, "_id.month": 1 } }
+        ]);
+
+        res.json({
+            success: true,
+            analytics: {
+                monthlyEarnings,
+                totalEarnings: monthlyEarnings.reduce((sum, month) => sum + month.totalEarnings, 0),
+                averageMonthlyEarnings: monthlyEarnings.length > 0 
+                    ? monthlyEarnings.reduce((sum, month) => sum + month.totalEarnings, 0) / monthlyEarnings.length 
+                    : 0
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching earnings analytics:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Error fetching earnings analytics' 
+        });
+    }
+},
 
     // Get earnings statistics - FIXED FIELD NAMES
     getEarningsStats: async (req, res) => {

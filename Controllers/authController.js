@@ -1,12 +1,11 @@
 const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
-const User= require('../Models/User')
+const User = require('../Models/User')
 
-
-// User Registration (Client/Freelancer Only)
+// Regular User Registration (Client/Freelancer Only)
 exports.register = async (req, res) => {
     try {
-        const { email, password, name, role = 'client', workEmail } = req.body;
+        const { email, password, name, role = 'client' } = req.body;
 
         // Basic validation
         if (!email || !password || !name) {
@@ -24,20 +23,16 @@ exports.register = async (req, res) => {
             return res.status(409).json({ error: 'User already exists' });
         }
 
-        // Hash password and create user - MOVED THIS BEFORE userData
+        // Hash password
         const hashedPassword = await bcrypt.hash(password, 12);
 
-        const userData = {
+        const user = new User({
             email,
             password: hashedPassword,
             role,
-            profile: {
-                name,
-                ...(workEmail && { workEmail })
-            }
-        };
+            profile: { name }
+        });
 
-        const user = new User(userData);
         await user.save();
 
         // Generate token
@@ -51,9 +46,9 @@ exports.register = async (req, res) => {
             success: true,
             user: {
                 id: user._id,
-                email:user.email,
-                role:user.role,
-                name:user.profile.name
+                email: user.email,
+                role: user.role,
+                name: user.profile.name
             },
             token
         });
@@ -67,128 +62,128 @@ exports.register = async (req, res) => {
     }
 };
 
-// Regular Login(Client/Freelancer)
-
-exports.login = async(req,res)=>{
-    try{
-        const{email,password}=req.body
+// Regular Login (Client/Freelancer) - STRICTLY NO ADMIN
+exports.login = async (req, res) => {
+    try {
+        const { email, password } = req.body;
 
         // Validate input
-        if(!email || !password){
-            return res.status(400).json({error:"Email and password are required"})
+        if (!email || !password) {
+            return res.status(400).json({ error: "Email and password are required" });
         }
 
-        const user= await User.findOne({email});
-        if(!user){
-            return res.status(401).json({error:"Invalid credentials"})
+        // Find user - EXCLUDE ADMIN
+        const user = await User.findOne({ email, role: { $ne: 'admin' } });
+        
+        if (!user) {
+            return res.status(401).json({ error: "Invalid credentials" });
         }
 
-        // ⭐️⭐️⭐️ TEMPORARILY REMOVE THIS BLOCK ⭐️⭐️⭐️
-        // if(user.role=== "admin"){
-        //     return res.status(401).json({error:'Please use admin login'})
-        // }
-        
-        const isMatch= await bcrypt.compare(password,user.password)
-        if(!isMatch){
-            return res.status(401).json({error:"Invalid credentials"})
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(401).json({ error: "Invalid credentials" });
         }
-        
+
         // Update last login
         user.lastLogin = new Date();
-        await user.save()
+        await user.save();
 
-        const token= jwt.sign(
-            {userId:user._id},
+        const token = jwt.sign(
+            { userId: user._id },
             process.env.JWT_SECRET,
-            {expiresIn:'7d'}
-        )
-        
+            { expiresIn: '7d' }
+        );
+
         res.json({
-            success:true,
-            user:{
-                id:user._id,
-                email:user.email,
-                role:user.role,
-                name:user.profile?.name,
-                profile:user.profile
+            success: true,
+            user: {
+                id: user._id,
+                email: user.email,
+                role: user.role,
+                name: user.profile?.name,
+                profile: user.profile
             },
             token
-        })
-    }
-    catch(error){
-        console.error('Login error:',error)
+        });
+
+    } catch (error) {
+        console.error('Login error:', error);
         res.status(500).json({
-            success:false,
-            error:"Login failed.Please try again"
-        })
+            success: false,
+            error: "Login failed. Please try again"
+        });
     }
 };
-// Admin login(Strictly for admin role only)
 
-exports.adminLogin= async(req,res)=>{
-    try{
-        const{email,password}=req.body;
-    if(!email || !password){
-        return res.status(400).json({error:"Email and password required"})
-    }
-    // Only allow admin role only
-    const user= await User.findOne({email,role:"admin"})
-    if(!user){
-        return res.status(400).json({error:"Admin access only"})
-    }
-    const isMatch = await bcrypt.compare(password,user.password)
-    if(!isMatch){
-        return res.status(401).json({error:"Invalid credentials"})
-    }
-    // Update last login
-    user.lastLogin=new Date()
-    await user.save()
+// Admin Login - STRICTLY ADMIN ONLY
+exports.adminLogin = async (req, res) => {
+    try {
+        const { email, password } = req.body;
 
-    // Admin token with longer expiry
-    const token=jwt.sign(
-        {
-            userId:user._id,
-            role:"admin"
-        },
-        process.env.JWT_SECRET,{expiresIn:'30d'}
-    )
-    res.json({
-        success:true,user:{
-            id:user._id,
-            email:user.email,
-            role:user.role,
-            name:user.profile.name,
-            profile:user.profile
-        },token
-    })
-    }
-    catch(error){
-        console.error("Admin login error")
+        if (!email || !password) {
+            return res.status(400).json({ error: "Email and password required" });
+        }
+
+        // Only allow admin role
+        const admin = await User.findOne({ email, role: "admin" });
+        
+        if (!admin) {
+            return res.status(401).json({ error: "Admin access only. Please use admin login page." });
+        }
+
+        const isMatch = await bcrypt.compare(password, admin.password);
+        if (!isMatch) {
+            return res.status(401).json({ error: "Invalid credentials" });
+        }
+
+        // Update last login
+        admin.lastLogin = new Date();
+        await admin.save();
+
+        // Admin token with longer expiry
+        const token = jwt.sign(
+            {
+                userId: admin._id,
+                role: "admin"
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: '30d' }
+        );
+
+        res.json({
+            success: true,
+            user: {
+                id: admin._id,
+                email: admin.email,
+                role: admin.role,
+                name: admin.profile?.name,
+                profile: admin.profile,
+                isAdmin: true
+            },
+            token,
+            isAdmin: true // Add flag for frontend
+        });
+
+    } catch (error) {
+        console.error("Admin login error:", error);
         res.status(500).json({
-            success:false,
-            error:"Admin login failed"
-        })
+            success: false,
+            error: "Admin login failed"
+        });
     }
-}
+};
 
-
-
-// Admin Register Only
+// Admin Register - STRICTLY WITH SECRET KEY
 exports.adminRegister = async (req, res) => {
     try {
         const { email, password, name, secretKey } = req.body;
-        
+
         // Verify admin secret key
-        if (secretKey !== process.env.ADMIN_SECRET_KEY) {
-            console.log("❌ SECRET KEY MISMATCH DETECTED!");
-            return res.status(401).json({ 
-                error: "Unauthorized admin registration",
-                debug: {
-                    received: secretKey,
-                    expected: process.env.ADMIN_SECRET_KEY,
-                    receivedLength: secretKey?.length,
-                    expectedLength: process.env.ADMIN_SECRET_KEY?.length
-                }
+        if (!secretKey || secretKey !== process.env.ADMIN_SECRET_KEY) {
+            console.log("❌ Admin registration attempt without valid secret key");
+            return res.status(401).json({
+                success: false,
+                error: "Unauthorized admin registration"
             });
         }
 
@@ -198,34 +193,38 @@ exports.adminRegister = async (req, res) => {
         }
 
         const hashedPassword = await bcrypt.hash(password, 12);
-        const user = new User({
+        const admin = new User({
             email,
             password: hashedPassword,
             role: "admin",
-            profile: { name }
+            profile: { name },
+            isActive: true
         });
 
-        await user.save();
+        await admin.save();
 
         const token = jwt.sign(
-            { userId: user._id },
+            {
+                userId: admin._id,
+                role: "admin"
+            },
             process.env.JWT_SECRET,
-            { expiresIn: '7d' }
+            { expiresIn: '30d' }
         );
 
         res.status(201).json({
             success: true,
             user: {
-                id: user._id,
-                email,
+                id: admin._id,
+                email: admin.email,
                 role: 'admin',
-                name
+                name: admin.profile.name,
+                isAdmin: true
             },
-            token
+            token,
+            isAdmin: true
         });
 
-        console.log("✅ Secret key matched! Proceeding with admin registration...");
-        
     } catch (error) {
         console.error("Admin registration error:", error);
         res.status(500).json({
@@ -235,82 +234,64 @@ exports.adminRegister = async (req, res) => {
     }
 };
 
-       
-// Get current user
-exports.getProfile= async(req,res)=>{
-    try{
-        const user=await User.findById(req.userId).select('-password')
-        if(!user){
-            return res.status(404).json({error:"User not found"})
-        }
-        res.json({
-            success:true,
-            user:{
-                id:user._id,
-                email:user.email,
-                role:user.role,
-                name:user.profile.name,
-                profile:user.profile
-            }
-        })
-    }
-    catch(error){
-        console.error("Get user error:",error)
-        res.status(500).json({
-            success:false,
-            error:"Failed to get user data"
-        })
-    }
-}
-
-// Logout
-exports.logout =(req,res)=>{
-    res.json({
-        success:true,
-        message:"Log out successfully"
-    })
-}
-
-
-
-exports.getAdminProfile = async (req, res) => {
+// Get current user profile
+exports.getProfile = async (req, res) => {
     try {
-        const admin = await User.findById(req.userId).select('-password');
-        
-        if (!admin) {
-            return res.status(404).json({
-                success: false,
-                message: 'Admin not found'
-            });
+        const user = await User.findById(req.userId).select('-password');
+        if (!user) {
+            return res.status(404).json({ error: "User not found" });
         }
 
-        if (admin.role !== 'admin') {
-            return res.status(403).json({
-                success: false,
-                message: 'Access denied. Admin privileges required.'
-            });
-        }
-
-        res.status(200).json({
+        res.json({
             success: true,
-            data: {
-                id: admin._id,
-                name: admin.name,
-                email: admin.email,
-                role: admin.role,
-                profile: admin.profile,
-                createdAt: admin.createdAt,
-                updatedAt: admin.updatedAt
+            user: {
+                id: user._id,
+                email: user.email,
+                role: user.role,
+                name: user.profile?.name,
+                profile: user.profile,
+                isAdmin: user.role === 'admin'
             }
         });
-
     } catch (error) {
-        console.error('Get admin profile error:', error);
+        console.error("Get user error:", error);
         res.status(500).json({
             success: false,
-            message: 'Server error',
-            error: error.message
+            error: "Failed to get user data"
         });
     }
 };
 
+// Logout
+exports.logout = (req, res) => {
+    res.json({
+        success: true,
+        message: "Logged out successfully"
+    });
+};
+
+// Check if email is admin (for frontend detection)
+exports.checkAdminEmail = async (req, res) => {
+    try {
+        const { email } = req.body;
+        
+        if (!email) {
+            return res.status(400).json({ error: "Email is required" });
+        }
+
+        const user = await User.findOne({ email });
+        const isAdmin = user && user.role === 'admin';
+
+        res.json({
+            success: true,
+            isAdmin,
+            exists: !!user
+        });
+    } catch (error) {
+        console.error("Check admin email error:", error);
+        res.status(500).json({
+            success: false,
+            error: "Failed to check email"
+        });
+    }
+};

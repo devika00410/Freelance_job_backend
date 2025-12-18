@@ -223,7 +223,92 @@ const freelancerJobController = {
                 errorType: error.name
             });
         }
-    },    // Get single job details with enhanced match information
+    }, 
+    
+    // Add this method to your freelancerJobController object, right before the closing brace
+getJobMatchScore: async (req, res) => {
+    try {
+        console.log('1. Starting getJobMatchScore function');
+        const freelancerId = req.userId || req.user.id;
+        const { jobId } = req.params;
+
+        console.log('2. Job ID:', jobId, 'Freelancer ID:', freelancerId);
+
+        // Get the job
+        const job = await Job.findById(jobId)
+            .select('title category skillsRequired experienceLevel proposalCount createdAt');
+
+        if (!job) {
+            return res.status(404).json({
+                success: false,
+                message: 'Job not found'
+            });
+        }
+
+        // Get freelancer's profile
+        const freelancer = await User.findById(freelancerId)
+            .select('skills category experienceLevel');
+
+        const freelancerSkills = freelancer?.skills || [];
+        const freelancerCategory = freelancer?.category;
+        const freelancerExperience = freelancer?.experienceLevel;
+
+        console.log('3. Freelancer profile loaded:', {
+            skillsCount: freelancerSkills.length,
+            category: freelancerCategory,
+            experience: freelancerExperience
+        });
+
+        // Calculate match score using the existing helper function
+        const matchResult = calculateJobMatchScore(
+            job,
+            freelancerSkills,
+            freelancerCategory,
+            freelancerExperience
+        );
+
+        console.log('4. Match calculation complete:', {
+            score: matchResult.score,
+            skillMatchPercentage: matchResult.skillMatchPercentage,
+            matchedSkillsCount: matchResult.matchedSkills.length
+        });
+
+        res.json({
+            success: true,
+            matchScore: {
+                overallScore: matchResult.score,
+                skillMatch: {
+                    percentage: matchResult.skillMatchPercentage,
+                    matchedSkills: matchResult.matchedSkills,
+                    totalRequiredSkills: job.skillsRequired.length,
+                    yourSkills: freelancerSkills
+                },
+                categoryMatch: freelancerCategory === job.category,
+                experienceMatch: freelancerExperience === job.experienceLevel,
+                breakdown: matchResult.breakdown,
+                reasons: matchResult.reasons,
+                recommendations: generateMatchRecommendations(matchResult, job, freelancerSkills)
+            },
+            job: {
+                title: job.title,
+                category: job.category,
+                skillsRequired: job.skillsRequired,
+                experienceLevel: job.experienceLevel,
+                proposalCount: job.proposalCount,
+                daysOld: Math.floor((new Date() - new Date(job.createdAt)) / (1000 * 60 * 60 * 24))
+            }
+        });
+
+    } catch (error) {
+        console.error('Get job match score error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error calculating match score',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+},
+    // Get single job details with enhanced match information
     getJobDetails: async (req, res) => {
         try {
             console.log('1. Starting getJobDetails function');
@@ -780,6 +865,62 @@ function calculateJobMatchScore(job, freelancerSkills, freelancerCategory, freel
             recency: daysOld < 1 ? 5 : daysOld < 3 ? 3 : 0
         }
     };
-}
+};
+// Helper function to generate match recommendations
+function generateMatchRecommendations(matchResult, job, freelancerSkills) {
+    const recommendations = [];
+
+    // Skill-based recommendations
+    if (matchResult.skillMatchPercentage < 50) {
+        const missingSkills = job.skillsRequired.filter(
+            skill => !matchResult.matchedSkills.includes(skill)
+        );
+        if (missingSkills.length > 0) {
+            recommendations.push({
+                type: 'skill_improvement',
+                message: `Learn these skills to increase your match: ${missingSkills.slice(0, 3).join(', ')}`,
+                priority: 'high'
+            });
+        }
+    }
+
+    // Experience recommendations
+    if (!matchResult.breakdown.experience) {
+        recommendations.push({
+            type: 'experience',
+            message: `This job requires ${job.experienceLevel} level experience`,
+            priority: 'medium'
+        });
+    }
+
+    // Competition recommendations
+    if (job.proposalCount > 20) {
+        recommendations.push({
+            type: 'competition',
+            message: 'High competition - consider highlighting unique skills in your proposal',
+            priority: 'medium'
+        });
+    }
+
+    // Profile completion recommendations
+    if (freelancerSkills.length < 3) {
+        recommendations.push({
+            type: 'profile',
+            message: 'Add more skills to your profile for better job matches',
+            priority: 'low'
+        });
+    }
+
+    // Positive reinforcement
+    if (matchResult.score >= 80) {
+        recommendations.push({
+            type: 'encouragement',
+            message: 'Excellent match! You have a high chance of getting this job',
+            priority: 'positive'
+        });
+    }
+
+    return recommendations;
+};
 
 module.exports = freelancerJobController;

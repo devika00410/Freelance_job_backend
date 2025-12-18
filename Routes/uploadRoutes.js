@@ -62,12 +62,16 @@ router.post('/upload', upload.single('image'), (req, res) => {
     });
     
     const filePath = `/uploads/${req.file.filename}`;
-    const fullUrl = `http://localhost:5000${filePath}`;
+    
+    // Use the request's protocol and host
+    const protocol = req.protocol;
+    const host = req.get('host');
+    const fullUrl = `${protocol}://${host}${filePath}`;
     
     console.log('File path:', filePath);
     console.log('Full URL:', fullUrl);
     
-    // Return success response with both relative path and full URL
+    // Return success response
     res.json({
       success: true,
       filePath: filePath,
@@ -87,6 +91,11 @@ router.post('/upload', upload.single('image'), (req, res) => {
   }
 });
 
+// Add this route
+router.get('/test', (req, res) => {
+  res.json({ message: 'Upload route is working!', timestamp: new Date() });
+});
+
 // Multiple file upload endpoint
 router.post('/upload-multiple', upload.array('images', 10), (req, res) => {
   try {
@@ -97,13 +106,20 @@ router.post('/upload-multiple', upload.array('images', 10), (req, res) => {
       });
     }
     
-    const fileData = req.files.map(file => ({
-      filePath: `/uploads/${file.filename}`,
-      fullUrl: `http://localhost:5000/uploads/${file.filename}`,
-      filename: file.filename,
-      originalName: file.originalname,
-      fileSize: file.size
-    }));
+    const fileData = req.files.map(file => {
+      const filePath = `/uploads/${file.filename}`;
+      const protocol = req.protocol;
+      const host = req.get('host');
+      const fullUrl = `${protocol}://${host}${filePath}`;
+      
+      return {
+        filePath: filePath,
+        fullUrl: fullUrl,
+        filename: file.filename,
+        originalName: file.originalname,
+        fileSize: file.size
+      };
+    });
     
     res.json({
       success: true,
@@ -115,7 +131,7 @@ router.post('/upload-multiple', upload.array('images', 10), (req, res) => {
     console.error('Upload error:', error);
     res.status(500).json({ 
       success: false,
-      error: 'Upload failed' 
+      error: 'Upload failed: ' + error.message 
     });
   }
 });
@@ -129,13 +145,19 @@ router.use((error, req, res, next) => {
         error: 'File too large. Maximum size is 10MB.'
       });
     }
+    return res.status(400).json({
+      success: false,
+      error: `Upload error: ${error.message}`
+    });
+  } else if (error) {
+    // Handle fileFilter errors and other non-multer errors
+    console.error('Upload route error:', error);
+    return res.status(400).json({
+      success: false,
+      error: error.message
+    });
   }
-  
-  console.error('Upload route error:', error);
-  res.status(400).json({
-    success: false,
-    error: error.message
-  });
+  next();
 });
 
 module.exports = router;

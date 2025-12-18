@@ -157,6 +157,70 @@ const freelancerProposalController = {
             });
         }
     },
+    // Add to freelancerProposalController.js
+getProposalAnalytics: async (req, res) => {
+    try {
+        const freelancerId = req.user.id || req.userId;
+        
+        const proposalAnalytics = await Proposal.aggregate([
+            {
+                $match: { freelancerId }
+            },
+            {
+                $group: {
+                    _id: "$status",
+                    count: { $sum: 1 },
+                    totalValue: { 
+                        $sum: { 
+                            $cond: [
+                                { $eq: ["$status", "accepted"] },
+                                "$proposalDetails.totalAmount",
+                                0
+                            ]
+                        }
+                    }
+                }
+            }
+        ]);
+
+        const monthlyProposals = await Proposal.aggregate([
+            {
+                $match: {
+                    freelancerId,
+                    createdAt: { $gte: new Date(Date.now() - 6 * 30 * 24 * 60 * 60 * 1000) } // Last 6 months
+                }
+            },
+            {
+                $group: {
+                    _id: {
+                        year: { $year: "$createdAt" },
+                        month: { $month: "$createdAt" }
+                    },
+                    proposalsSubmitted: { $sum: 1 },
+                    proposalsAccepted: {
+                        $sum: { $cond: [{ $eq: ["$status", "accepted"] }, 1, 0] }
+                    }
+                }
+            },
+            { $sort: { "_id.year": 1, "_id.month": 1 } }
+        ]);
+
+        res.json({
+            success: true,
+            analytics: {
+                statusDistribution: proposalAnalytics,
+                monthlyTrends: monthlyProposals,
+                acceptanceRate: proposalAnalytics.find(p => p._id === 'accepted')?.count || 0
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching proposal analytics:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Error fetching proposal analytics' 
+        });
+    }
+},
 
     getProposalDetails: async (req, res) => {
         try {

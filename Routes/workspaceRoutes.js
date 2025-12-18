@@ -2,12 +2,12 @@ const express = require('express');
 const router = express.Router();
 const workspaceController = require('../Controllers/workspaceController');
 const { authenticate } = require('../Middlewares/authMiddleware');
+const Workspace = require('../Models/Workspace'); // Added import
 
 // ==================== MIDDLEWARE ====================
 router.use(authenticate);
 
-
-// Add this to workspaceRoutes.js at the top after authentication middleware
+// Debug middleware
 router.use((req, res, next) => {
   console.log('📡 Workspace route hit:', req.method, req.url);
   console.log('👤 Authenticated user:', req.userId);
@@ -31,7 +31,6 @@ router.get('/test-connection', (req, res) => {
 // List all workspaces for debugging
 router.get('/debug/all', async (req, res) => {
   try {
-    const Workspace = require('../Models/Workspace');
     const workspaces = await Workspace.find({}).limit(5);
     
     res.json({
@@ -55,18 +54,77 @@ router.get('/debug/all', async (req, res) => {
   }
 });
 
-// ==================== MAIN ROUTES ====================
-// Client workspace route - MUST set userRole to 'client'
-// In workspaceRoutes.js, replace the client route with this:
+// Test authentication
+router.get('/auth-test', (req, res) => {
+  res.json({ 
+    authenticated: true, 
+    userId: req.userId,
+    user: req.user,
+    message: 'Authentication is working'
+  });
+});
 
+// Test files route specifically
+router.get('/test-files/:workspaceId', (req, res) => {
+  console.log('✅ Test files route hit:', req.params.workspaceId);
+  res.json({ 
+    success: true, 
+    workspaceId: req.params.workspaceId,
+    message: 'Files route test successful',
+    files: [] 
+  });
+});
 
-// ==================== SIMPLE FALLBACK ROUTE ====================
-// Add this as a backup route
+// ==================== CORE WORKSPACE ROUTES ====================
+// These MUST come BEFORE the specific client/freelancer routes!
+
+// 1. Files routes (MUST BE FIRST - before any /:workspaceId routes that could shadow them)
+router.get('/:workspaceId/files', workspaceController.getWorkspaceFiles);
+router.get('/:workspaceId/shared/files', workspaceController.getWorkspaceFiles);
+router.post('/:workspaceId/shared/files', workspaceController.uploadFile);
+
+// 2. Messages routes
+router.get('/:workspaceId/shared/messages', workspaceController.getSharedMessages);
+router.post('/:workspaceId/shared/messages', workspaceController.sendSharedMessage);
+
+// 3. Milestones routes
+router.get('/:workspaceId/shared/milestones', workspaceController.getWorkspaceMilestones);
+
+// ==================== CLIENT/FREELANCER SPECIFIC ROUTES ====================
+// Client workspace route
+router.get('/client/:workspaceId', (req, res, next) => {
+  req.userRole = 'client';
+  next();
+}, workspaceController.getRoleBasedWorkspace);
+
+// Freelancer workspace route
+router.get('/freelancer/:workspaceId', (req, res, next) => {
+  req.userRole = 'freelancer';
+  next();
+}, workspaceController.getRoleBasedWorkspace);
+
+// ==================== OTHER ROUTES ====================
+// Client-specific features
+router.get('/:workspaceId/client/notes', workspaceController.getPrivateNotes);
+router.post('/:workspaceId/client/notes', workspaceController.addPrivateNote);
+router.put('/:workspaceId/milestones/:milestoneId/approve', workspaceController.approveMilestone);
+
+// Freelancer-specific features
+router.get('/:workspaceId/freelancer/notes', workspaceController.getPrivateNotes);
+router.post('/:workspaceId/freelancer/notes', workspaceController.addPrivateNote);
+router.put('/:workspaceId/milestones/:milestoneId/submit', workspaceController.submitMilestoneWork);
+
+// Common features
+router.post('/:workspaceId/report-issue', workspaceController.reportIssue);
+router.post('/:workspaceId/schedule-call', workspaceController.scheduleVideoCall);
+router.post('/:workspaceId/instant-call', workspaceController.createInstantCall);
+
+// ==================== FALLBACK/DEBUG ROUTES ====================
+// Simple fallback route
 router.get('/simple/:workspaceId', async (req, res) => {
   try {
     console.log('🔍 Simple workspace route called');
     
-    // Always return success with dummy data
     res.json({
       success: true,
       workspace: {
@@ -125,7 +183,7 @@ router.get('/simple/:workspaceId', async (req, res) => {
   }
 });
 
-// In workspaceRoutes.js, add this temporary debug route:
+// Debug route
 router.get('/debug/:workspaceId', async (req, res) => {
   try {
     const { workspaceId } = req.params;
@@ -136,7 +194,6 @@ router.get('/debug/:workspaceId', async (req, res) => {
     console.log('User ID:', userId);
     console.log('User:', req.user);
     
-    // Try to find the workspace
     const workspace = await Workspace.findOne({ workspaceId: workspaceId });
     console.log('Workspace found:', !!workspace);
     
@@ -173,15 +230,10 @@ router.get('/debug/:workspaceId', async (req, res) => {
   }
 });
 
-// Add this test route
+// Test DB connection
 router.get('/test-db-connection', async (req, res) => {
   try {
-    const Workspace = require('../Models/Workspace');
-    
-    // Count all workspaces
     const count = await Workspace.countDocuments();
-    
-    // Get one workspace to check structure
     const sample = await Workspace.findOne().lean();
     
     res.json({
@@ -205,12 +257,11 @@ router.get('/test-db-connection', async (req, res) => {
   }
 });
 
-// Add this route for testing
+// Test milestones
 router.get('/test-milestones/:workspaceId', async (req, res) => {
   try {
     console.log('✅ TEST MILESTONES ROUTE HIT');
     
-    // Just return dummy data for testing
     res.json({
       success: true,
       milestones: [
@@ -245,7 +296,7 @@ router.get('/test-milestones/:workspaceId', async (req, res) => {
   }
 });
 
-// In workspaceRoutes.js, add this SIMPLE client route
+// Simple client route
 router.get('/simple-client/:workspaceId', async (req, res) => {
   try {
     console.log('✅ SIMPLE CLIENT ROUTE HIT');
@@ -276,40 +327,5 @@ router.get('/simple-client/:workspaceId', async (req, res) => {
     });
   }
 });
-
-
-// In workspaceRoutes.js
-router.get('/client/:workspaceId', (req, res, next) => {
-  req.userRole = 'client';
-  next();
-}, workspaceController.getRoleBasedWorkspace);
-
-router.get('/freelancer/:workspaceId', (req, res, next) => {
-  req.userRole = 'freelancer';
-  next();
-}, workspaceController.getRoleBasedWorkspace);
-
-
-// ==================== OTHER ROUTES (keep existing) ====================
-router.get('/:workspaceId/shared/messages', workspaceController.getSharedMessages);
-router.post('/:workspaceId/shared/messages', workspaceController.sendSharedMessage);
-router.get('/:workspaceId/shared/milestones', workspaceController.getWorkspaceMilestones);
-router.get('/:workspaceId/shared/files', workspaceController.getWorkspaceFiles);
-router.post('/:workspaceId/shared/files', workspaceController.uploadFile);
-
-// Client-specific features
-router.get('/:workspaceId/client/notes', workspaceController.getPrivateNotes);
-router.post('/:workspaceId/client/notes', workspaceController.addPrivateNote);
-router.put('/:workspaceId/milestones/:milestoneId/approve', workspaceController.approveMilestone);
-
-// Freelancer-specific features
-router.get('/:workspaceId/freelancer/notes', workspaceController.getPrivateNotes);
-router.post('/:workspaceId/freelancer/notes', workspaceController.addPrivateNote);
-router.put('/:workspaceId/milestones/:milestoneId/submit', workspaceController.submitMilestoneWork);
-
-// Common features
-router.post('/:workspaceId/report-issue', workspaceController.reportIssue);
-router.post('/:workspaceId/schedule-call', workspaceController.scheduleVideoCall);
-router.post('/:workspaceId/instant-call', workspaceController.createInstantCall);
 
 module.exports = router;

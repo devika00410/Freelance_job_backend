@@ -2,19 +2,23 @@ const Job = require('../Models/Job');
 const Proposal = require('../Models/Proposal');
 const User = require('../Models/User');
 const Contract = require('../Models/Contract');
+const Workspace = require('../Models/Workspace');
+const Transaction = require('../Models/Transaction');
+const Notification = require('../Models/Notification');
 
 // Helper functions
 const calculateMonthlyEarnings = async (freelancerId) => {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     
-    const monthlyContracts = await Contract.find({
-        freelancerId,
+    const monthlyTransactions = await Transaction.find({
+        toUser: freelancerId,
+        type: 'payment',
         status: 'completed',
-        updatedAt: { $gte: startOfMonth }
+        createdAt: { $gte: startOfMonth }
     });
     
-    return monthlyContracts.reduce((total, contract) => total + (contract.totalAmount || 0), 0);
+    return monthlyTransactions.reduce((total, transaction) => total + (transaction.amount || 0), 0);
 };
 
 const getFreelancerDashboardData = async (freelancerId) => {
@@ -24,14 +28,16 @@ const getFreelancerDashboardData = async (freelancerId) => {
     return {
         quickStats: {
             proposalsSent,
-            jobsApplied: proposalsSent, // Same as proposals sent
-            profileViews: user.profileViews || 0,
-            invitations: user.invitations?.length || 0
+            jobsApplied: proposalsSent,
+            profileViews: user?.profileViews || 0,
+            invitations: user?.invitations?.length || 0
         }
     };
 };
 
 const getRelativeTime = (date) => {
+    if (!date) return 'recently';
+    
     const diff = Date.now() - new Date(date).getTime();
     const seconds = Math.floor(diff / 1000);
     const minutes = Math.floor(seconds / 60);
@@ -44,7 +50,601 @@ const getRelativeTime = (date) => {
     return `${seconds} second${seconds > 1 ? 's' : ''} ago`;
 };
 
+const calculateFreelancerScore = (acceptedProposals, completedProjects, rating) => {
+    const proposalScore = Math.min(acceptedProposals * 2, 30);
+    const projectScore = Math.min(completedProjects * 5, 50);
+    const ratingScore = (rating / 5) * 20;
+    
+    return Math.round(proposalScore + projectScore + ratingScore);
+};
+
 const freelancerController = {
+    // ============= REAL-TIME DASHBOARD METHODS =============
+    
+    // Get dashboard stats with real data
+    getDashboardStats: async (req, res) => {
+        try {
+            console.log('🚀 Fetching real-time dashboard stats for freelancer:', req.user.id);
+            
+            const freelancerId = req.user.id;
+            
+            // Get all stats in parallel
+            const [
+                activeProjects,
+                totalEarnings,
+                monthlyEarnings,
+                totalProposals,
+                activeProposals,
+                acceptedProposals,
+                completedProjects,
+                rating,
+                userSkills,
+                recentNotifications,
+                successRate,
+                onTimeDelivery
+            ] = await Promise.all([
+                // Active projects
+                Contract.countDocuments({ 
+                    freelancerId, 
+                    status: { $in: ['active', 'in_progress'] } 
+                }),
+                
+                // Total earnings
+                Transaction.aggregate([
+                    { 
+                        $match: { 
+                            toUser: freelancerId, 
+                            type: 'payment',
+                            status: 'completed' 
+                        } 
+                    },
+                    { 
+                        $group: { 
+                            _id: null, 
+                            total: { $sum: '$amount' } 
+                        } 
+                    }
+                ]),
+                
+                // Monthly earnings
+                calculateMonthlyEarnings(freelancerId),
+                
+                // Total proposals
+                Proposal.countDocuments({ freelancerId }),
+                
+                // Active proposals
+                Proposal.countDocuments({ 
+                    freelancerId, 
+                    status: { $in: ['submitted', 'reviewed'] } 
+                }),
+                
+                // Accepted proposals
+                Proposal.countDocuments({ 
+                    freelancerId, 
+                    status: 'accepted' 
+                }),
+                
+                // Completed projects
+                Contract.countDocuments({ 
+                    freelancerId, 
+                    status: 'completed' 
+                }),
+                
+                // Get rating
+                User.findById(freelancerId).select('rating'),
+                
+                // Get user skills
+                User.findById(freelancerId).select('skills'),
+                
+                // Recent notifications count
+                Notification.countDocuments({
+                    userId: freelancerId,
+                    userType: 'freelancer',
+                    isRead: false,
+                    createdAt: { 
+                        $gte: new Date(new Date().setHours(0, 0, 0, 0)) 
+                    }
+                }),
+                
+                // Success rate calculation
+                Contract.aggregate([
+                    {
+                        $match: {
+                            freelancerId,
+                            status: 'completed'
+                        }
+                    },
+                    {
+                        $group: {
+                            _id: null,
+                            total: { $sum: 1 },
+                            successful: {
+                                $sum: {
+                                    $cond: [
+                                        { $eq: ["$completionStatus", "successful"] },
+                                        1,
+                                        0
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                ]),
+                
+                // On-time delivery calculation
+                Contract.aggregate([
+                    {
+                        $match: {
+                            freelancerId,
+                            status: 'completed',
+                            endDate: { $exists: true, $ne: null },
+                            completedAt: { $exists: true, $ne: null }
+                        }
+                    },
+                    {
+                        $group: {
+                            _id: null,
+                            total: { $sum: 1 },
+                            onTime: {
+                                $sum: {
+                                    $cond: [
+                                        { $lte: ["$completedAt", "$endDate"] },
+                                        1,
+                                        0
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                ])
+            ]);
+
+            // Calculate success rate
+            let calculatedSuccessRate = 85; // Default
+            if (successRate[0] && successRate[0].total > 0) {
+                calculatedSuccessRate = Math.round((successRate[0].successful / successRate[0].total) * 100);
+            }
+
+            // Calculate on-time delivery
+            let calculatedOnTimeDelivery = 90; // Default
+            if (onTimeDelivery[0] && onTimeDelivery[0].total > 0) {
+                calculatedOnTimeDelivery = Math.round((onTimeDelivery[0].onTime / onTimeDelivery[0].total) * 100);
+            }
+
+            // Calculate freelancer score
+            const freelancerScore = calculateFreelancerScore(
+                acceptedProposals,
+                completedProjects,
+                rating?.rating || 4.5
+            );
+
+            // Get user data
+            const userData = await User.findById(freelancerId)
+                .select('name email profile role')
+                .lean();
+
+            res.json({
+                success: true,
+                stats: {
+                    monthlyEarnings,
+                    activeProjects,
+                    freelancerScore,
+                    rating: rating?.rating || 4.5,
+                    totalEarnings: totalEarnings[0]?.total || 0,
+                    successRate: calculatedSuccessRate,
+                    onTimeDelivery: calculatedOnTimeDelivery,
+                    totalProposals,
+                    activeProposals,
+                    acceptedProposals,
+                    completedProjects,
+                    recentNotifications,
+                    userSkills: userSkills?.skills || []
+                },
+                user: {
+                    name: userData?.profile?.name || userData?.name || 'Freelancer',
+                    email: userData?.email,
+                    role: userData?.role,
+                    profilePicture: userData?.profile?.picture
+                }
+            });
+
+        } catch (error) {
+            console.error('Error fetching dashboard stats:', error);
+            res.status(500).json({
+                success: false,
+                message: "Server error fetching dashboard stats",
+                error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            });
+        }
+    },
+
+    // Get real activities (notifications)
+    getActivities: async (req, res) => {
+        try {
+            const freelancerId = req.user.id;
+            
+            const activities = await Notification.find({
+                userId: freelancerId,
+                userType: 'freelancer'
+            })
+            .sort({ createdAt: -1 })
+            .limit(20)
+            .select('type title message data createdAt isRead priority');
+
+            // Format activities for frontend
+            const formattedActivities = activities.map(activity => {
+                const timeAgo = getRelativeTime(activity.createdAt);
+                let type = 'system';
+                
+                // Map notification types to activity types
+                switch(activity.type) {
+                    case 'proposal_submitted':
+                    case 'proposal_accepted':
+                    case 'proposal_rejected':
+                        type = 'proposal';
+                        break;
+                    case 'contract_sent':
+                    case 'contract_accepted':
+                    case 'contract_completed':
+                        type = 'contract';
+                        break;
+                    case 'payment_received':
+                        type = 'payment';
+                        break;
+                    case 'milestone_submitted':
+                    case 'milestone_approved':
+                        type = 'milestone';
+                        break;
+                    case 'message_received':
+                        type = 'message';
+                        break;
+                    case 'workspace_created':
+                    case 'workspace_updated':
+                        type = 'workspace';
+                        break;
+                    default:
+                        type = 'system';
+                }
+                
+                return {
+                    _id: activity._id,
+                    type: type,
+                    message: activity.message,
+                    time: timeAgo,
+                    status: activity.isRead ? 'read' : 'unread',
+                    priority: activity.priority,
+                    data: activity.data,
+                    createdAt: activity.createdAt
+                };
+            });
+
+            res.json({
+                success: true,
+                activities: formattedActivities
+            });
+        } catch (error) {
+            console.error('Error fetching activities:', error);
+            res.status(500).json({
+                success: false,
+                message: "Server error fetching activities",
+                error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            });
+        }
+    },
+
+    // Get latest activities (for polling)
+    getLatestActivities: async (req, res) => {
+        try {
+            const freelancerId = req.user.id;
+            const lastActivityTime = req.query.since || new Date(Date.now() - 5 * 60 * 1000);
+            
+            const activities = await Notification.find({
+                userId: freelancerId,
+                userType: 'freelancer',
+                createdAt: { $gt: new Date(lastActivityTime) }
+            })
+            .sort({ createdAt: -1 })
+            .limit(10)
+            .select('type title message data createdAt isRead');
+            
+            res.json({
+                success: true,
+                activities
+            });
+        } catch (error) {
+            console.error('Error fetching latest activities:', error);
+            res.status(500).json({ 
+                success: false, 
+                message: error.message 
+            });
+        }
+    },
+
+    // Search functionality
+    search: async (req, res) => {
+        try {
+            const { query } = req.query;
+            const freelancerId = req.user.id;
+            
+            if (!query || query.trim().length < 2) {
+                return res.json({
+                    success: true,
+                    results: {
+                        jobs: [],
+                        clients: [],
+                        messages: []
+                    }
+                });
+            }
+            
+            const searchRegex = new RegExp(query, 'i');
+            
+            // Search jobs
+            const jobs = await Job.find({
+                $or: [
+                    { title: searchRegex },
+                    { description: searchRegex },
+                    { category: searchRegex },
+                    { skillsRequired: searchRegex }
+                ],
+                status: 'active'
+            })
+            .populate('clientId', 'name profile')
+            .limit(5)
+            .select('title description budget skillsRequired deadline');
+            
+            // Search clients from your contracts
+            const clientIds = await Contract.distinct('clientId', { freelancerId });
+            
+            const clients = await User.find({
+                _id: { $in: clientIds },
+                $or: [
+                    { name: searchRegex },
+                    { email: searchRegex },
+                    { 'profile.company': searchRegex }
+                ]
+            })
+            .limit(5)
+            .select('name email profile.picture profile.company');
+            
+            // Search messages (you'll need to implement this based on your message model)
+            const messages = []; // Placeholder
+            
+            res.json({
+                success: true,
+                results: {
+                    jobs,
+                    clients,
+                    messages
+                }
+            });
+        } catch (error) {
+            console.error('Error searching:', error);
+            res.status(500).json({ 
+                success: false, 
+                message: error.message 
+            });
+        }
+    },
+
+    // Get analytics data
+    getAnalytics: async (req, res) => {
+        try {
+            const freelancerId = req.user.id;
+            const { period = 'month' } = req.query;
+            
+            // Calculate time range
+            const now = new Date();
+            let startDate;
+            
+            switch (period) {
+                case 'day':
+                    startDate = new Date(now.setDate(now.getDate() - 1));
+                    break;
+                case 'week':
+                    startDate = new Date(now.setDate(now.getDate() - 7));
+                    break;
+                case 'month':
+                    startDate = new Date(now.setMonth(now.getMonth() - 1));
+                    break;
+                case 'year':
+                    startDate = new Date(now.setFullYear(now.getFullYear() - 1));
+                    break;
+                default:
+                    startDate = new Date(now.setMonth(now.getMonth() - 1));
+            }
+            
+            // Get earnings over time
+            const earningsOverTime = await Transaction.aggregate([
+                {
+                    $match: {
+                        toUser: freelancerId,
+                        type: 'payment',
+                        status: 'completed',
+                        createdAt: { $gte: startDate }
+                    }
+                },
+                {
+                    $group: {
+                        _id: {
+                            $dateToString: { format: "%Y-%m-%d", date: "$createdAt" }
+                        },
+                        total: { $sum: "$amount" }
+                    }
+                },
+                { $sort: { _id: 1 } }
+            ]);
+            
+            // Get proposal success rate
+            const proposals = await Proposal.aggregate([
+                {
+                    $match: {
+                        freelancerId,
+                        createdAt: { $gte: startDate }
+                    }
+                },
+                {
+                    $group: {
+                        _id: "$status",
+                        count: { $sum: 1 }
+                    }
+                }
+            ]);
+            
+            // Get project completion stats
+            const projects = await Contract.aggregate([
+                {
+                    $match: {
+                        freelancerId,
+                        createdAt: { $gte: startDate }
+                    }
+                },
+                {
+                    $group: {
+                        _id: "$status",
+                        count: { $sum: 1 },
+                        totalBudget: { $sum: "$totalAmount" }
+                    }
+                }
+            ]);
+            
+            // Get workspaces activity
+            const workspaces = await Workspace.aggregate([
+                {
+                    $match: {
+                        freelancerId,
+                        createdAt: { $gte: startDate }
+                    }
+                },
+                {
+                    $group: {
+                        _id: {
+                            $dateToString: { format: "%Y-%m-%d", date: "$createdAt" }
+                        },
+                        count: { $sum: 1 }
+                    }
+                },
+                { $sort: { _id: 1 } }
+            ]);
+            
+            // Get project analytics
+            const projectAnalytics = await Contract.aggregate([
+                {
+                    $match: {
+                        freelancerId
+                    }
+                },
+                {
+                    $group: {
+                        _id: "$status",
+                        count: { $sum: 1 },
+                        totalBudget: { $sum: "$totalAmount" },
+                        avgBudget: { $avg: "$totalAmount" },
+                        minBudget: { $min: "$totalAmount" },
+                        maxBudget: { $max: "$totalAmount" }
+                    }
+                }
+            ]);
+            
+            // Get timeline data
+            const timelineData = await Contract.aggregate([
+                {
+                    $match: {
+                        freelancerId,
+                        status: 'completed'
+                    }
+                },
+                {
+                    $group: {
+                        _id: {
+                            $dateToString: { format: "%Y-%m", date: "$updatedAt" }
+                        },
+                        count: { $sum: 1 },
+                        totalEarnings: { $sum: "$totalAmount" }
+                    }
+                },
+                { $sort: { _id: 1 } }
+            ]);
+            
+            res.json({
+                success: true,
+                analytics: {
+                    period,
+                    earningsOverTime,
+                    proposals,
+                    projects,
+                    workspaces,
+                    projectAnalytics,
+                    timelineData,
+                    startDate,
+                    endDate: new Date()
+                }
+            });
+        } catch (error) {
+            console.error('Error fetching analytics:', error);
+            res.status(500).json({ 
+                success: false, 
+                message: error.message 
+            });
+        }
+    },
+
+    getProjectAnalytics: async (req, res) => {
+        try {
+            const freelancerId = req.user.id;
+            
+            const projectAnalytics = await Contract.aggregate([
+                {
+                    $match: {
+                        freelancerId
+                    }
+                },
+                {
+                    $group: {
+                        _id: "$status",
+                        count: { $sum: 1 },
+                        totalBudget: { $sum: "$totalAmount" },
+                        avgBudget: { $avg: "$totalAmount" },
+                        minBudget: { $min: "$totalAmount" },
+                        maxBudget: { $max: "$totalAmount" }
+                    }
+                }
+            ]);
+            
+            const timelineData = await Contract.aggregate([
+                {
+                    $match: {
+                        freelancerId,
+                        status: 'completed'
+                    }
+                },
+                {
+                    $group: {
+                        _id: {
+                            $dateToString: { format: "%Y-%m", date: "$updatedAt" }
+                        },
+                        count: { $sum: 1 },
+                        totalEarnings: { $sum: "$totalAmount" }
+                    }
+                },
+                { $sort: { _id: 1 } }
+            ]);
+            
+            res.json({
+                success: true,
+                projectAnalytics,
+                timelineData
+            });
+        } catch (error) {
+            res.status(500).json({ 
+                success: false, 
+                message: error.message 
+            });
+        }
+    },
+
+    // ============= EXISTING METHODS (keep these) =============
+    
     // Get freelancer dashboard data
     getFreelancerDashboard: async (req, res) => {
         try {
@@ -105,87 +705,31 @@ const freelancerController = {
             });
         }
     },
-getPublicProfile: async (req, res) => {
-  try {
-    const { freelancerId } = req.params;
-    
-    const freelancer = await User.findById(freelancerId)
-      .select('-password -emailOTP -phoneOTP -adminPermission -securityLevel')
-      .populate('portfolio');
-    
-    if (!freelancer) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Freelancer not found' 
-      });
-    }
-    
-    res.json({
-      success: true,
-      profile: freelancer
-    });
-  } catch (error) {
-    console.error('Error fetching public profile:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Server error fetching profile' 
-    });
-  }
-},
-    // Get recent activity
-    getRecentActivity: async (req, res) => {
+
+    getPublicProfile: async (req, res) => {
         try {
-            const freelancerId = req.userId;
+            const { freelancerId } = req.params;
             
-            // Get recent proposals activity
-            const recentProposals = await Proposal.find({ freelancerId })
-                .populate('projectId', 'title')
-                .sort({ createdAt: -1 })
-                .limit(5);
+            const freelancer = await User.findById(freelancerId)
+                .select('-password -emailOTP -phoneOTP -adminPermission -securityLevel')
+                .populate('portfolio');
             
-            // Get recent contracts
-            const recentContracts = await Contract.find({ freelancerId })
-                .populate('clientId', 'profile.name')
-                .sort({ createdAt: -1 })
-                .limit(3);
-
-            const activities = [];
-            
-            // Format proposal activities
-            recentProposals.forEach(proposal => {
-                activities.push({
-                    type: 'proposal',
-                    message: `Your proposal for "${proposal.projectId?.title || 'Deleted Job'}" was ${proposal.status}`,
-                    time: getRelativeTime(proposal.createdAt),
-                    status: proposal.status,
-                    createdAt: proposal.createdAt
+            if (!freelancer) {
+                return res.status(404).json({ 
+                    success: false, 
+                    message: 'Freelancer not found' 
                 });
-            });
-
-            // Format contract activities
-            recentContracts.forEach(contract => {
-                activities.push({
-                    type: 'contract',
-                    message: `New contract with ${contract.clientId?.profile?.name || 'Client'}`,
-                    time: getRelativeTime(contract.createdAt),
-                    status: contract.status,
-                    createdAt: contract.createdAt
-                });
-            });
-
-            // Sort all activities by date (newest first)
-            activities.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
+            }
+            
             res.json({
                 success: true,
-                activities: activities.slice(0, 8) // Return max 8 activities
+                profile: freelancer
             });
         } catch (error) {
-            console.error('Recent activity error:', error);
-            res.status(500).json({
-                success: false,
-                message: "Server error fetching recent activity",
-                error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            console.error('Error fetching public profile:', error);
+            res.status(500).json({ 
+                success: false, 
+                message: 'Server error fetching profile' 
             });
         }
     },
@@ -240,7 +784,6 @@ getPublicProfile: async (req, res) => {
         }
     },
 
-    // Get available jobs for freelancers
     getAvailableJobs: async (req, res) => {
         try {
             const freelancerId = req.userId;
@@ -293,7 +836,6 @@ getPublicProfile: async (req, res) => {
         }
     },
 
-    // Submit a proposal
     submitProposal: async (req, res) => {
         try {
             const freelancerId = req.userId;
@@ -370,7 +912,6 @@ getPublicProfile: async (req, res) => {
         }
     },
 
-    // Get freelancer's proposals
     getMyProposals: async (req, res) => {
         try {
             const freelancerId = req.userId;
@@ -407,7 +948,6 @@ getPublicProfile: async (req, res) => {
         }
     },
 
-    // Get freelancer profile
     getFreelancerProfile: async (req, res) => {
         try {
             const freelancerId = req.userId;
@@ -458,7 +998,6 @@ getPublicProfile: async (req, res) => {
         }
     },
 
-    // Update freelancer profile
     updateFreelancerProfile: async (req, res) => {
         try {
             const freelancerId = req.userId;
@@ -510,7 +1049,86 @@ getPublicProfile: async (req, res) => {
         }
     },
 
-    // Get freelancer statistics (can be used by other functions)
+    getProfile: async (req, res) => {
+        try {
+            const freelancerId = req.user.id;
+            
+            const profile = await User.findById(freelancerId)
+                .select('basicInfo professionalService skillsTools experiencePortfolio')
+                .lean();
+            
+            if (!profile) {
+                return res.status(404).json({ 
+                    success: false, 
+                    message: 'Profile not found' 
+                });
+            }
+            
+            res.json({
+                success: true,
+                profile
+            });
+        } catch (error) {
+            res.status(500).json({ 
+                success: false, 
+                message: error.message 
+            });
+        }
+    },
+
+    getJobMatchScore: async (req, res) => {
+        try {
+            const { jobId } = req.params;
+            const freelancerId = req.user.id;
+            
+            // Get job
+            const job = await Job.findById(jobId)
+                .select('title serviceCategory skillsRequired experienceLevel budget')
+                .lean();
+            
+            if (!job) {
+                return res.status(404).json({ 
+                    success: false, 
+                    message: 'Job not found' 
+                });
+            }
+            
+            // Get freelancer profile
+            const freelancer = await User.findById(freelancerId)
+                .select('professionalService skillsTools')
+                .lean();
+            
+            let score = 0;
+            
+            // Calculate match score
+            if (freelancer.professionalService?.primaryService === job.serviceCategory) {
+                score += 50;
+            }
+            
+            const freelancerSkills = freelancer.skillsTools?.skills || [];
+            if (job.skillsRequired && freelancerSkills.length > 0) {
+                const matchingSkills = job.skillsRequired.filter(skill => 
+                    freelancerSkills.includes(skill)
+                );
+                const skillMatchPercentage = (matchingSkills.length / job.skillsRequired.length) * 40;
+                score += skillMatchPercentage;
+            }
+            
+            res.json({
+                success: true,
+                score: Math.min(Math.round(score), 100),
+                job,
+                freelancer
+            });
+        } catch (error) {
+            res.status(500).json({ 
+                success: false, 
+                message: error.message 
+            });
+        }
+    },
+
+    // Get freelancer statistics
     getFreelancerStats: async (freelancerId) => {
         try {
             const proposals = await Proposal.countDocuments({ freelancerId });
