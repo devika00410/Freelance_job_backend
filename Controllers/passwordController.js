@@ -2,7 +2,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const User = require('../Models/User');
 const PasswordResetToken = require('../Models/PasswordResetToken');
-const emailService = require('../services/emailService');
+const emailService = require('../Services/emailService');
 
 // Generate a 6-digit numeric code
 const generateResetCode = () => {
