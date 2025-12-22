@@ -53,6 +53,7 @@ app.use('/api/upload', require('./Routes/uploadRoutes'));
 app.use('/api/subscriptions', require('./Routes/subscriptionRoutes'));
 app.use('/api/public', require('./Routes/publicProfileRoutes'));
 app.use('/api/admin', require('./Routes/adminRoutes'));
+app.use('/api/contacts', require('./Routes/contactRoutes'));
 
 // Add remaining routes as needed...
 const { globalErrorHandler } = require('./Middlewares/validationMiddleware');
